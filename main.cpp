@@ -441,6 +441,60 @@ void deleteContact() {
     }
 }
 
+// ─── Count ────────────────────────────────────────────────────────────
+void countContacts() {
+    auto records = loadAll();
+    cout << "\n[COUNT] 현재 입력된 연락처 개수\n";
+    printDivider(40);
+    cout << "전체: " << records.size() << "건\n";
+    if (records.empty()) return;
+
+    // ── 직급별 집계 ─────────────────────────────────
+    static const char* RANKS[] = {
+        "CL1","CL2","CL3","CL4","Master","Fellow",
+        "상무","부사장","사장","부회장","회장"
+    };
+    unordered_map<string,int> rankCnt;
+    rankCnt.reserve(records.size());
+    for (const auto& c : records) rankCnt[c.rank]++;
+
+    cout << "\n직급별 현황:\n";
+    for (int i = 0; i < 11; i++) {
+        auto it = rankCnt.find(RANKS[i]);
+        if (it != rankCnt.end())
+            cout << "  " << setw(10) << left << RANKS[i]
+                 << ": " << it->second << "건\n";
+    }
+    // 목록에 없는 직급(미지정 등)
+    for (const auto& kv : rankCnt) {
+        bool known = false;
+        for (int i = 0; i < 11; i++) if (kv.first == RANKS[i]) { known=true; break; }
+        if (!known)
+            cout << "  " << setw(10) << left << kv.first
+                 << ": " << kv.second << "건\n";
+    }
+
+    // ── 부서별 집계 (상위 10개, 건수 내림차순) ──────
+    unordered_map<string,int> deptCnt;
+    deptCnt.reserve(records.size());
+    for (const auto& c : records) deptCnt[c.department]++;
+
+    vector<pair<string,int>> deptList(deptCnt.begin(), deptCnt.end());
+    // std::sort: introsort O(n log n)
+    sort(deptList.begin(), deptList.end(),
+         [](const pair<string,int>& a, const pair<string,int>& b){
+             return a.second > b.second;
+         });
+
+    cout << "\n부서별 현황 (상위 10개):\n";
+    int shown = 0;
+    for (const auto& kv : deptList) {
+        if (++shown > 10) break;
+        cout << "  " << setw(28) << left << kv.first
+             << ": " << kv.second << "건\n";
+    }
+}
+
 // ─── 메인 메뉴 ────────────────────────────────────────────────────────
 int main() {
 #ifdef _WIN32
@@ -458,6 +512,7 @@ int main() {
         cout << "  3. Search  - 검색 (ID / 사번 / 이름)\n";
         cout << "  4. Update  - 연락처 수정\n";
         cout << "  5. Delete  - 연락처 삭제\n";
+        cout << "  6. Count   - 현재 입력된 개수 확인\n";
         cout << "  0. 종료\n";
         cout << string(52,'-') << "\n";
         cout << "선택: ";
@@ -471,9 +526,10 @@ int main() {
                 case 2: readAll();       break;
                 case 3: searchContact(); break;
                 case 4: updateContact(); break;
-                case 5: deleteContact(); break;
+                case 5: deleteContact();  break;
+                case 6: countContacts(); break;
                 case 0: cout << "프로그램을 종료합니다.\n"; return 0;
-                default: cout << "잘못된 선택입니다. 0~5 사이의 숫자를 입력하세요.\n";
+                default: cout << "잘못된 선택입니다. 0~6 사이의 숫자를 입력하세요.\n";
             }
         } catch (const exception& e) {
             cerr << "[오류] " << e.what() << "\n";
