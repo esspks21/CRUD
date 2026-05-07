@@ -246,11 +246,77 @@ void createContact() {
     cout << "[완료] " << userId << " (" << empNo << ") 연락처가 추가되었습니다.\n";
 }
 
+// ─── 정렬 지원 ────────────────────────────────────────────────────────
+// 직급 계급 순서 (CL1=1 최하위 → 회장=11 최상위)
+static int rankOrder(const string& r) {
+    static const unordered_map<string,int> M = {
+        {"CL1",1},{"CL2",2},{"CL3",3},{"CL4",4},
+        {"Master",5},{"Fellow",6},{"상무",7},
+        {"부사장",8},{"사장",9},{"부회장",10},{"회장",11}
+    };
+    auto it = M.find(r);
+    return it != M.end() ? it->second : 0;
+}
+
+// std::sort 비교자 — introsort (quicksort + heapsort + insertion)
+// 평균·최악 모두 O(n log n), 캐시 친화적 quicksort 우선 적용
+static bool contactCmp(const Contact& a, const Contact& b,
+                       int field, bool asc) {
+    if (field == 6) {   // 직급: 문자열 대신 계급 정수로 비교
+        int oa = rankOrder(a.rank), ob = rankOrder(b.rank);
+        return asc ? oa < ob : oa > ob;
+    }
+    const string *va, *vb;
+    switch (field) {
+        case 1: va=&a.id;         vb=&b.id;         break;
+        case 2: va=&a.emp_no;     vb=&b.emp_no;     break;
+        case 3: va=&a.name;       vb=&b.name;       break;
+        case 4: va=&a.email;      vb=&b.email;      break;
+        case 5: va=&a.phone;      vb=&b.phone;      break;
+        case 7: va=&a.department; vb=&b.department; break;
+        case 8: va=&a.memo;       vb=&b.memo;       break;
+        default: return false;
+    }
+    return asc ? *va < *vb : *va > *vb;
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────
 void readAll() {
     auto records = loadAll();
     cout << "\n[READ] 전체 연락처 목록 (" << records.size() << "건)\n";
     if (records.empty()) { cout << "등록된 연락처가 없습니다.\n"; return; }
+
+    cout << "\n정렬 기준 (0 = 정렬 없음):\n"
+         << "  1.ID  2.사번  3.이름  4.이메일  5.전화번호  6.직급  7.부서  8.메모\n"
+         << "선택: ";
+    int sortField = 0;
+    cin >> sortField;
+    if (cin.fail() || sortField < 0 || sortField > 8) {
+        cin.clear(); sortField = 0;
+    }
+    clearInput();   // '\n' 제거
+
+    if (sortField > 0) {
+        cout << "정렬 방향: 1. 오름차순  2. 내림차순\n선택: ";
+        int dir = 1;
+        cin >> dir;
+        if (cin.fail()) { cin.clear(); dir = 1; }
+        clearInput();
+        bool asc = (dir != 2);
+
+        // std::sort: introsort — O(n log n) 최악 보장, STL 중 가장 빠른 전체 정렬
+        sort(records.begin(), records.end(),
+             [sortField, asc](const Contact& a, const Contact& b){
+                 return contactCmp(a, b, sortField, asc);
+             });
+
+        static const char* FIELD_NAME[] = {
+            "","ID","사번","이름","이메일","전화번호","직급","부서","메모"
+        };
+        cout << "[정렬] " << FIELD_NAME[sortField]
+             << " 기준 " << (asc ? "오름차순" : "내림차순") << "\n";
+    }
+
     printTableHeader();
     for (const auto& c : records) printContact(c);
     printDivider();
