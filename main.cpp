@@ -159,6 +159,19 @@ string surnameToEnglish(const string& kr) {
     return it != SURNAME_EN.end() ? it->second : "unknown";
 }
 
+// id / emp_no / phone 중복 검사 (excludeId = 수정 중인 레코드 자신 제외)
+bool isDuplicate(const vector<Contact>& records, const string& field,
+                 const string& value, const string& excludeId = "") {
+    if (value.empty()) return false;
+    for (const auto& c : records) {
+        if (!excludeId.empty() && c.id == excludeId) continue;
+        if (field == "id"     && c.id     == value) return true;
+        if (field == "emp_no" && c.emp_no == value) return true;
+        if (field == "phone"  && c.phone  == value) return true;
+    }
+    return false;
+}
+
 static const char* RANK_LIST[] = {
     "CL1","CL2","CL3","CL4","Master","Fellow",
     "상무","부사장","사장","부회장","회장"
@@ -206,13 +219,24 @@ void createContact() {
     }
 
     auto records = loadAll();
-    string empNo = nextEmpNo(records, yy + mm);
+    string empNo  = nextEmpNo(records, yy + mm);
     string userId = generateUserId(records, initials, surnameEn);
     cout << "사번: " << empNo << "  /  ID: " << userId << "\n";
+
+    // ID / 사번 중복 검사 (자동 생성이지만 레이스 방지용 이중 확인)
+    if (isDuplicate(records, "id", userId)) {
+        cout << "[오류] ID '" << userId << "'가 이미 사용 중입니다.\n"; return;
+    }
+    if (isDuplicate(records, "emp_no", empNo)) {
+        cout << "[오류] 사번 '" << empNo << "'이 이미 사용 중입니다.\n"; return;
+    }
 
     string email = getLine("이메일         : ");
     if (email.empty()) email = userId + "@samsung.com";
     string phone = getLine("전화번호       : ");
+    if (isDuplicate(records, "phone", phone)) {
+        cout << "[오류] 전화번호 '" << phone << "'이 이미 사용 중입니다.\n"; return;
+    }
 
     cout << "직급 선택:\n";
     for (int i = 0; i < RANK_COUNT; i++)
@@ -313,7 +337,14 @@ void updateContact() {
     switch (field) {
         case 1: it->name       = getLine("새 이름     : "); break;
         case 2: it->email      = getLine("새 이메일   : "); break;
-        case 3: it->phone      = getLine("새 전화번호 : "); break;
+        case 3: {
+            string newPhone = getLine("새 전화번호 : ");
+            if (isDuplicate(records, "phone", newPhone, it->id)) {
+                cout << "[오류] 전화번호 '" << newPhone << "'이 이미 사용 중입니다.\n"; return;
+            }
+            it->phone = newPhone;
+            break;
+        }
         case 4: {
             cout << "직급 선택:\n";
             for (int i = 0; i < RANK_COUNT; i++)
