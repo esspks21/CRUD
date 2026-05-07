@@ -12,19 +12,20 @@
 #include <stdexcept>
 #include "json.hpp"
 
+using namespace std;
 using json = nlohmann::json;
 
 // ─────────────────────────────────────────
 // 데이터 모델
 // ─────────────────────────────────────────
-const std::string DATA_FILE = "contacts.json";
+const string DATA_FILE = "contacts.json";
 
 struct Contact {
-    int         id;
-    std::string name;
-    std::string email;
-    std::string phone;
-    std::string memo;
+    int    id;
+    string name;
+    string email;
+    string phone;
+    string memo;
 };
 
 // ─────────────────────────────────────────
@@ -53,9 +54,9 @@ Contact fromJson(const json& j) {
 // ─────────────────────────────────────────
 // 파일 I/O
 // ─────────────────────────────────────────
-std::vector<Contact> loadAll() {
-    std::vector<Contact> records;
-    std::ifstream file(DATA_FILE);
+vector<Contact> loadAll() {
+    vector<Contact> records;
+    ifstream file(DATA_FILE);
     if (!file.is_open()) return records;
 
     try {
@@ -65,90 +66,90 @@ std::vector<Contact> loadAll() {
             for (const auto& item : data)
                 records.push_back(fromJson(item));
     } catch (const json::exception& e) {
-        std::cerr << "[경고] 데이터 파일 파싱 오류: " << e.what() << "\n";
+        cerr << "[경고] 데이터 파일 파싱 오류: " << e.what() << "\n";
     }
     return records;
 }
 
-void saveAll(const std::vector<Contact>& records) {
+void saveAll(const vector<Contact>& records) {
     json data = json::array();
     for (const auto& c : records)
         data.push_back(toJson(c));
 
-    std::ofstream file(DATA_FILE);
+    ofstream file(DATA_FILE);
     if (!file.is_open())
-        throw std::runtime_error("파일을 열 수 없습니다: " + DATA_FILE);
+        throw runtime_error("파일을 열 수 없습니다: " + DATA_FILE);
     file << data.dump(4);
 }
 
 // ─────────────────────────────────────────
 // 유틸리티
 // ─────────────────────────────────────────
-int nextId(const std::vector<Contact>& records) {
+int nextId(const vector<Contact>& records) {
     int maxId = 0;
     for (const auto& c : records)
-        maxId = std::max(maxId, c.id);
+        maxId = max(maxId, c.id);
     return maxId + 1;
 }
 
 void clearInput() {
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
 }
 
-std::string getLine(const std::string& prompt) {
-    std::cout << prompt;
-    std::string s;
-    std::getline(std::cin, s);
+string getLine(const string& prompt) {
+    cout << prompt;
+    string s;
+    getline(cin, s);
     return s;
 }
 
 void printDivider(int w = 72) {
-    std::cout << std::string(w, '-') << "\n";
+    cout << string(w, '-') << "\n";
 }
 
 void printTableHeader() {
     printDivider();
-    std::cout << std::left
-              << std::setw(6)  << "ID"
-              << std::setw(16) << "이름"
-              << std::setw(28) << "이메일"
-              << std::setw(14) << "전화번호"
-              << "메모" << "\n";
+    cout << left
+         << setw(6)  << "ID"
+         << setw(16) << "이름"
+         << setw(28) << "이메일"
+         << setw(14) << "전화번호"
+         << "메모" << "\n";
     printDivider();
 }
 
 void printContact(const Contact& c) {
-    std::cout << std::left
-              << std::setw(6)  << c.id
-              << std::setw(16) << c.name
-              << std::setw(28) << c.email
-              << std::setw(14) << c.phone
-              << c.memo << "\n";
+    cout << left
+         << setw(6)  << c.id
+         << setw(16) << c.name
+         << setw(28) << c.email
+         << setw(14) << c.phone
+         << c.memo << "\n";
 }
 
 // ─────────────────────────────────────────
 // Create
 // ─────────────────────────────────────────
 void createContact() {
-    std::cout << "\n[CREATE] 새 연락처 추가\n";
+    cout << "\n[CREATE] 새 연락처 추가\n";
     printDivider(40);
 
     clearInput();
-    std::string name  = getLine("이름     : ");
+    string name  = getLine("이름     : ");
     if (name.empty()) {
-        std::cout << "[오류] 이름은 필수 항목입니다.\n";
+        cout << "[오류] 이름은 필수 항목입니다.\n";
         return;
     }
-    std::string email = getLine("이메일   : ");
-    std::string phone = getLine("전화번호 : ");
-    std::string memo  = getLine("메모     : ");
+    string email = getLine("이메일   : ");
+    string phone = getLine("전화번호 : ");
+    string memo  = getLine("메모     : ");
 
     auto records = loadAll();
     Contact c{nextId(records), name, email, phone, memo};
     records.push_back(c);
     saveAll(records);
 
-    std::cout << "[완료] ID " << c.id << " 연락처가 추가되었습니다.\n";
+    cout << "[완료] ID " << c.id << " 연락처가 추가되었습니다.\n";
 }
 
 // ─────────────────────────────────────────
@@ -156,10 +157,10 @@ void createContact() {
 // ─────────────────────────────────────────
 void readAll() {
     auto records = loadAll();
-    std::cout << "\n[READ] 전체 연락처 목록 (" << records.size() << "건)\n";
+    cout << "\n[READ] 전체 연락처 목록 (" << records.size() << "건)\n";
 
     if (records.empty()) {
-        std::cout << "등록된 연락처가 없습니다.\n";
+        cout << "등록된 연락처가 없습니다.\n";
         return;
     }
 
@@ -173,26 +174,26 @@ void readAll() {
 // Search (ID / 이름)
 // ─────────────────────────────────────────
 void searchContact() {
-    std::cout << "\n[SEARCH] 검색\n";
-    std::cout << "1. ID로 검색\n";
-    std::cout << "2. 이름으로 검색\n";
-    std::cout << "선택: ";
+    cout << "\n[SEARCH] 검색\n";
+    cout << "1. ID로 검색\n";
+    cout << "2. 이름으로 검색\n";
+    cout << "선택: ";
 
     int choice;
-    if (!(std::cin >> choice) || (choice != 1 && choice != 2)) {
-        std::cout << "잘못된 선택입니다.\n";
+    if (!(cin >> choice) || (choice != 1 && choice != 2)) {
+        cout << "잘못된 선택입니다.\n";
         clearInput();
         return;
     }
 
     auto records = loadAll();
-    std::vector<Contact> results;
+    vector<Contact> results;
 
     if (choice == 1) {
         int id;
-        std::cout << "검색할 ID: ";
-        if (!(std::cin >> id)) {
-            std::cout << "올바른 ID를 입력하세요.\n";
+        cout << "검색할 ID: ";
+        if (!(cin >> id)) {
+            cout << "올바른 ID를 입력하세요.\n";
             clearInput();
             return;
         }
@@ -200,18 +201,18 @@ void searchContact() {
             if (c.id == id) results.push_back(c);
     } else {
         clearInput();
-        std::string keyword = getLine("검색할 이름: ");
+        string keyword = getLine("검색할 이름: ");
         for (const auto& c : records)
-            if (c.name.find(keyword) != std::string::npos)
+            if (c.name.find(keyword) != string::npos)
                 results.push_back(c);
     }
 
     if (results.empty()) {
-        std::cout << "검색 결과가 없습니다.\n";
+        cout << "검색 결과가 없습니다.\n";
         return;
     }
 
-    std::cout << "\n검색 결과 " << results.size() << "건:\n";
+    cout << "\n검색 결과 " << results.size() << "건:\n";
     printTableHeader();
     for (const auto& c : results)
         printContact(c);
@@ -222,39 +223,39 @@ void searchContact() {
 // Update
 // ─────────────────────────────────────────
 void updateContact() {
-    std::cout << "\n[UPDATE] 연락처 수정\n";
-    std::cout << "수정할 ID: ";
+    cout << "\n[UPDATE] 연락처 수정\n";
+    cout << "수정할 ID: ";
 
     int id;
-    if (!(std::cin >> id)) {
-        std::cout << "올바른 ID를 입력하세요.\n";
+    if (!(cin >> id)) {
+        cout << "올바른 ID를 입력하세요.\n";
         clearInput();
         return;
     }
 
     auto records = loadAll();
-    auto it = std::find_if(records.begin(), records.end(),
-                           [id](const Contact& c) { return c.id == id; });
+    auto it = find_if(records.begin(), records.end(),
+                      [id](const Contact& c) { return c.id == id; });
     if (it == records.end()) {
-        std::cout << "ID " << id << "를 찾을 수 없습니다.\n";
+        cout << "ID " << id << "를 찾을 수 없습니다.\n";
         return;
     }
 
-    std::cout << "\n현재 정보:\n";
+    cout << "\n현재 정보:\n";
     printTableHeader();
     printContact(*it);
     printDivider();
 
-    std::cout << "\n수정할 필드:\n"
-              << "1. 이름     (" << it->name  << ")\n"
-              << "2. 이메일   (" << it->email << ")\n"
-              << "3. 전화번호 (" << it->phone << ")\n"
-              << "4. 메모     (" << it->memo  << ")\n"
-              << "선택: ";
+    cout << "\n수정할 필드:\n"
+         << "1. 이름     (" << it->name  << ")\n"
+         << "2. 이메일   (" << it->email << ")\n"
+         << "3. 전화번호 (" << it->phone << ")\n"
+         << "4. 메모     (" << it->memo  << ")\n"
+         << "선택: ";
 
     int field;
-    if (!(std::cin >> field) || field < 1 || field > 4) {
-        std::cout << "잘못된 선택입니다.\n";
+    if (!(cin >> field) || field < 1 || field > 4) {
+        cout << "잘못된 선택입니다.\n";
         clearInput();
         return;
     }
@@ -268,46 +269,46 @@ void updateContact() {
     }
 
     saveAll(records);
-    std::cout << "[완료] ID " << id << " 연락처가 수정되었습니다.\n";
+    cout << "[완료] ID " << id << " 연락처가 수정되었습니다.\n";
 }
 
 // ─────────────────────────────────────────
 // Delete
 // ─────────────────────────────────────────
 void deleteContact() {
-    std::cout << "\n[DELETE] 연락처 삭제\n";
-    std::cout << "삭제할 ID: ";
+    cout << "\n[DELETE] 연락처 삭제\n";
+    cout << "삭제할 ID: ";
 
     int id;
-    if (!(std::cin >> id)) {
-        std::cout << "올바른 ID를 입력하세요.\n";
+    if (!(cin >> id)) {
+        cout << "올바른 ID를 입력하세요.\n";
         clearInput();
         return;
     }
 
     auto records = loadAll();
-    auto it = std::find_if(records.begin(), records.end(),
-                           [id](const Contact& c) { return c.id == id; });
+    auto it = find_if(records.begin(), records.end(),
+                      [id](const Contact& c) { return c.id == id; });
     if (it == records.end()) {
-        std::cout << "ID " << id << "를 찾을 수 없습니다.\n";
+        cout << "ID " << id << "를 찾을 수 없습니다.\n";
         return;
     }
 
-    std::cout << "\n삭제할 연락처:\n";
+    cout << "\n삭제할 연락처:\n";
     printTableHeader();
     printContact(*it);
     printDivider();
 
-    std::cout << "정말 삭제하시겠습니까? (y/N): ";
+    cout << "정말 삭제하시겠습니까? (y/N): ";
     char confirm;
-    std::cin >> confirm;
+    cin >> confirm;
 
     if (confirm == 'y' || confirm == 'Y') {
         records.erase(it);
         saveAll(records);
-        std::cout << "[완료] ID " << id << " 연락처가 삭제되었습니다.\n";
+        cout << "[완료] ID " << id << " 연락처가 삭제되었습니다.\n";
     } else {
-        std::cout << "삭제가 취소되었습니다.\n";
+        cout << "삭제가 취소되었습니다.\n";
     }
 }
 
@@ -319,24 +320,24 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
-    std::cout << "데이터 저장 위치: " << DATA_FILE << "\n";
+    cout << "데이터 저장 위치: " << DATA_FILE << "\n";
 
     while (true) {
-        std::cout << "\n" << std::string(50, '=') << "\n";
-        std::cout << "        JSON CRUD 연락처 관리 시스템\n";
-        std::cout << std::string(50, '=') << "\n";
-        std::cout << "  1. Create  - 연락처 추가\n";
-        std::cout << "  2. Read    - 전체 목록 보기\n";
-        std::cout << "  3. Search  - 검색 (ID / 이름)\n";
-        std::cout << "  4. Update  - 연락처 수정\n";
-        std::cout << "  5. Delete  - 연락처 삭제\n";
-        std::cout << "  0. 종료\n";
-        std::cout << std::string(50, '-') << "\n";
-        std::cout << "선택: ";
+        cout << "\n" << string(50, '=') << "\n";
+        cout << "        JSON CRUD 연락처 관리 시스템\n";
+        cout << string(50, '=') << "\n";
+        cout << "  1. Create  - 연락처 추가\n";
+        cout << "  2. Read    - 전체 목록 보기\n";
+        cout << "  3. Search  - 검색 (ID / 이름)\n";
+        cout << "  4. Update  - 연락처 수정\n";
+        cout << "  5. Delete  - 연락처 삭제\n";
+        cout << "  0. 종료\n";
+        cout << string(50, '-') << "\n";
+        cout << "선택: ";
 
         int choice;
-        if (!(std::cin >> choice)) {
-            std::cin.clear();
+        if (!(cin >> choice)) {
+            cin.clear();
             clearInput();
             continue;
         }
@@ -349,13 +350,13 @@ int main() {
                 case 4: updateContact(); break;
                 case 5: deleteContact(); break;
                 case 0:
-                    std::cout << "프로그램을 종료합니다.\n";
+                    cout << "프로그램을 종료합니다.\n";
                     return 0;
                 default:
-                    std::cout << "잘못된 선택입니다. 0~5 사이의 숫자를 입력하세요.\n";
+                    cout << "잘못된 선택입니다. 0~5 사이의 숫자를 입력하세요.\n";
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[오류] " << e.what() << "\n";
+        } catch (const exception& e) {
+            cerr << "[오류] " << e.what() << "\n";
         }
     }
 }
