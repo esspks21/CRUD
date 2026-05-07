@@ -236,16 +236,32 @@ struct Gen {
         }
     }
 
-    // 직급: 피라미드 분포
-    string genRank() {
-        struct RW { const char* name; int w; };
-        static const RW R[] = {
-            {"CL1",400},{"CL2",250},{"CL3",150},{"CL4",80},
-            {"Master",50},{"Fellow",30},{"상무",20},
-            {"부사장",10},{"사장",5},{"부회장",3},{"회장",2}
+    // emp_no(YYMMXXXX)에서 근속연수 계산 (기준연도 2026)
+    static int seniority(const string& emp_no) {
+        int yy = stoi(emp_no.substr(0, 2));
+        int fy = (yy >= 90) ? 1900 + yy : 2000 + yy;
+        return 2026 - fy;
+    }
+
+    // 근속연수에 따라 확률적으로 직급 부여 — 오래 근무할수록 높은 직급 확률↑
+    string genRank(int sen) {
+        static const char* RANKS[] = {
+            "CL1","CL2","CL3","CL4","Master","Fellow",
+            "상무","부사장","사장","부회장","회장"
         };
-        int r=ri(1,1000),acc=0;
-        for (int i=0;i<11;i++){ acc+=R[i].w; if(r<=acc) return R[i].name; }
+        // 구간: 0-4년, 5-9년, 10-14년, 15-19년, 20-25년, 26+년
+        static const int W[6][11] = {
+            {700,250, 40, 10,  0,  0,  0,  0,  0,  0,  0},
+            {350,380,180, 60, 20, 10,  0,  0,  0,  0,  0},
+            {100,250,330,200, 70, 30, 20,  0,  0,  0,  0},
+            { 30,100,200,280,180, 80, 70, 40, 20,  0,  0},
+            { 10, 30, 80,150,200,160,150,100, 60, 50, 10},
+            {  0,  0, 20, 50,120,150,200,180,150,100, 30},
+        };
+        int band = (sen<=4)?0:(sen<=9)?1:(sen<=14)?2:(sen<=19)?3:(sen<=25)?4:5;
+        int total=0; for(int i=0;i<11;i++) total+=W[band][i];
+        int r=ri(1,total),acc=0;
+        for(int i=0;i<11;i++){ acc+=W[band][i]; if(r<=acc) return RANKS[i]; }
         return "CL1";
     }
 
@@ -289,7 +305,7 @@ struct Gen {
         string uid   = genUserId(init, surEn);
         string name  = string(SURNAMES_KR[si]) + GIVEN_KR[gi];
         return {uid, empNo, name, uid+"@samsung.com",
-                genUniquePhone(), genRank(), genDept(), genMemo()};
+                genUniquePhone(), genRank(seniority(empNo)), genDept(), genMemo()};
     }
 };
 
@@ -537,6 +553,30 @@ int main() {
         bool emFmt=true;
         for(const auto& c:fl) if(c.email.find("@samsung.com")==string::npos){emFmt=false;break;}
         chk("이메일 @samsung.com 형식", emFmt);
+
+        // 근속연수-직급 상관관계 검증
+        // 근속 5년 이하 평균 직급 인덱스 < 근속 20년 이상 평균 직급 인덱스 이어야 함
+        {
+            static const unordered_map<string,int> RIDX = {
+                {"CL1",1},{"CL2",2},{"CL3",3},{"CL4",4},
+                {"Master",5},{"Fellow",6},{"상무",7},
+                {"부사장",8},{"사장",9},{"부회장",10},{"회장",11}
+            };
+            double sumJ=0, sumS=0; int cntJ=0, cntS=0;
+            for(const auto& c:fl){
+                int yy=stoi(c.emp_no.substr(0,2));
+                int fy=(yy>=90)?1900+yy:2000+yy;
+                int sen=2026-fy;
+                auto it=RIDX.find(c.rank);
+                int rv=(it!=RIDX.end())?it->second:0;
+                if(sen<=5){ sumJ+=rv; cntJ++; }
+                if(sen>=20){ sumS+=rv; cntS++; }
+            }
+            bool corrOk=(cntJ>0&&cntS>0)&&(sumS/cntS>sumJ/cntJ);
+            chk("근속연수-직급 상관관계 (시니어 평균직급 > 주니어)", corrOk,
+                "주니어 avg="+to_string(cntJ>0?sumJ/cntJ:0)+
+                " 시니어 avg="+to_string(cntS>0?sumS/cntS:0));
+        }
     }
 
     // TC 저장
