@@ -29,3 +29,6 @@ _deps/
 .idea/
 *.swp
 *~
+
+# Regression 테스트 케이스 출력 (로컬 확인용)
+TC/

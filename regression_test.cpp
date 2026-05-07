@@ -1,5 +1,12 @@
 #ifdef _WIN32
 #include <windows.h>
+#include <direct.h>
+#define TC_MKDIR(p) _mkdir(p)
+#define TC_SEP "\\"
+#else
+#include <sys/stat.h>
+#define TC_MKDIR(p) mkdir(p, 0755)
+#define TC_SEP "/"
 #endif
 
 #include <iostream>
@@ -9,6 +16,10 @@
 #include <random>
 #include <algorithm>
 #include <numeric>
+#include <chrono>
+#include <ctime>
+#include <sstream>
+#include <iomanip>
 #include "json.hpp"
 
 using namespace std;
@@ -142,6 +153,41 @@ void check(const string& label, bool cond, const string& detail = "") {
     }
 }
 
+// ─── TC 폴더 유틸리티 ─────────────────────────────────────────────────
+string makeTimestamp() {
+    auto now = chrono::system_clock::now();
+    time_t t = chrono::system_clock::to_time_t(now);
+    tm tm_buf = *localtime(&t);
+    ostringstream oss;
+    oss << put_time(&tm_buf, "%Y%m%d_%H%M%S");
+    return oss.str();
+}
+
+string makeTcDir(const string& ts) {
+    string base = "TC";
+    string dir  = base + TC_SEP + ts;
+    TC_MKDIR(base.c_str());
+    TC_MKDIR(dir.c_str());
+    return dir;
+}
+
+void writeJson(const string& path, const json& data) {
+    ofstream f(path);
+    f << data.dump(4);
+}
+
+void writeSummary(const string& path) {
+    ofstream f(path);
+    f << "Regression 결과: PASS " << gPass << " / FAIL " << gFail << "\n";
+    if (gFail == 0) {
+        f << "전체 통과\n";
+    } else {
+        f << "실패 항목 있음\n";
+        for (const auto& line : gFailures)
+            f << line << "\n";
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────
 int main() {
 #ifdef _WIN32
@@ -150,7 +196,11 @@ int main() {
 #endif
     remove(TEST_FILE.c_str());
 
+    string ts    = makeTimestamp();
+    string tcDir = makeTcDir(ts);
+
     Gen gen(12345);
+    json opLog;
 
     // ═══════════════════════════════════════════════════════
     // STEP 1 : 100개 Create
@@ -162,8 +212,13 @@ int main() {
         alive.push_back(id);
     }
 
+    // input.json : Create 직후 100개 전체 저장
     {
         auto recs = loadAll();
+        json inputData = json::array();
+        for (const auto& c : recs) inputData.push_back(toJson(c));
+        writeJson(tcDir + TC_SEP + "input.json", inputData);
+
         check("레코드 수 = 100",
               recs.size() == 100, "실제=" + to_string(recs.size()));
 
@@ -180,25 +235,46 @@ int main() {
     // STEP 2 : 랜덤 Read 30회
     // ═══════════════════════════════════════════════════════
     cout << "[STEP 2] 랜덤 Read 검증 (30회)\n";
+    json readLog = json::array();
     for (int i = 0; i < 30; i++) {
         int tid = alive[gen.randInt(0, (int)alive.size() - 1)];
         auto recs = loadAll();
         bool found = any_of(recs.begin(), recs.end(),
                             [tid](const Contact& c){ return c.id == tid; });
         check("Read ID=" + to_string(tid) + " 존재", found);
+
+        json entry;
+        entry["id"]   = tid;
+        entry["pass"] = found;
+        for (const auto& c : recs)
+            if (c.id == tid) { entry["data"] = toJson(c); break; }
+        readLog.push_back(entry);
     }
+    opLog["step2_read"] = readLog;
 
     // ═══════════════════════════════════════════════════════
     // STEP 3 : 랜덤 Update 20회 + 반영 확인
     // ═══════════════════════════════════════════════════════
     cout << "[STEP 3] 랜덤 Update (20회)\n";
+    json updateLog = json::array();
     for (int i = 0; i < 20; i++) {
         int tid   = alive[gen.randInt(0, (int)alive.size() - 1)];
         int field = gen.randInt(1, 4);
         string nv = "upd_" + to_string(i);
 
+        json before;
+        for (const auto& c : loadAll())
+            if (c.id == tid) { before = toJson(c); break; }
+
         bool ok = opUpdate(tid, field, nv);
         check("Update ID=" + to_string(tid) + " field=" + to_string(field), ok);
+
+        json entry;
+        entry["id"]        = tid;
+        entry["field"]     = field;
+        entry["new_value"] = nv;
+        entry["op_ok"]     = ok;
+        entry["before"]    = before;
 
         if (ok) {
             auto recs = loadAll();
@@ -211,12 +287,17 @@ int main() {
                     case 3: actual = c.phone; break;
                     case 4: actual = c.memo;  break;
                 }
+                bool verified = (actual == nv);
                 check("Update 반영 ID=" + to_string(tid) + " field=" + to_string(field),
-                      actual == nv, "기대=" + nv + " 실제=" + actual);
+                      verified, "기대=" + nv + " 실제=" + actual);
+                entry["after"]    = toJson(c);
+                entry["verified"] = verified;
                 break;
             }
         }
+        updateLog.push_back(entry);
     }
+    opLog["step3_update"] = updateLog;
 
     // ═══════════════════════════════════════════════════════
     // STEP 4 : 랜덤 Delete 25회 + 부재 확인
@@ -226,31 +307,52 @@ int main() {
     vector<int> toDelete(alive.begin(), alive.begin() + 25);
     vector<int> remaining(alive.begin() + 25, alive.end());
 
+    json deleteLog = json::array();
     for (int tid : toDelete) {
+        json snapshot;
+        for (const auto& c : loadAll())
+            if (c.id == tid) { snapshot = toJson(c); break; }
+
         bool ok = opDelete(tid);
         check("Delete ID=" + to_string(tid), ok);
+
+        json entry;
+        entry["id"]     = tid;
+        entry["op_ok"]  = ok;
+        entry["before"] = snapshot;
 
         if (ok) {
             auto recs = loadAll();
             bool gone = !any_of(recs.begin(), recs.end(),
                                 [tid](const Contact& c){ return c.id == tid; });
             check("Delete 후 ID=" + to_string(tid) + " 부재", gone);
+            entry["absent_verified"] = gone;
         }
+        deleteLog.push_back(entry);
     }
+    opLog["step4_delete"] = deleteLog;
 
     // ═══════════════════════════════════════════════════════
     // STEP 5 : Delete 후 Create → max+1 전략
     // ═══════════════════════════════════════════════════════
     cout << "[STEP 5] Delete 후 Create - max+1 ID 전략\n";
     {
-        auto now = loadAll();
+        auto cur = loadAll();
         int maxIdNow = 0;
-        for (const auto& c : now) maxIdNow = max(maxIdNow, c.id);
+        for (const auto& c : cur) maxIdNow = max(maxIdNow, c.id);
 
         int newId = opCreate("신규연락처", "new@test.com", "010-9999-0000", "신규");
+        bool pass5 = (newId == maxIdNow + 1);
         check("새 ID = max+1 (" + to_string(maxIdNow + 1) + ")",
-              newId == maxIdNow + 1, "실제=" + to_string(newId));
+              pass5, "실제=" + to_string(newId));
         remaining.push_back(newId);
+
+        opLog["step5_create_after_delete"] = {
+            {"max_id_before",    maxIdNow},
+            {"expected_new_id",  maxIdNow + 1},
+            {"actual_new_id",    newId},
+            {"pass",             pass5}
+        };
     }
 
     // ═══════════════════════════════════════════════════════
@@ -258,36 +360,55 @@ int main() {
     // ═══════════════════════════════════════════════════════
     cout << "[STEP 6] 최종 무결성 검증\n";
     {
-        auto final = loadAll();
+        auto finalRecs = loadAll();
         int expected = 100 - 25 + 1; // 76
 
         check("최종 레코드 수 = " + to_string(expected),
-              (int)final.size() == expected, "실제=" + to_string(final.size()));
+              (int)finalRecs.size() == expected, "실제=" + to_string(finalRecs.size()));
 
-        bool allHaveName = all_of(final.begin(), final.end(),
+        bool allHaveName = all_of(finalRecs.begin(), finalRecs.end(),
                                   [](const Contact& c){ return !c.name.empty(); });
         check("모든 레코드 name 필드 비어있지 않음", allHaveName);
 
         vector<int> fids;
-        for (const auto& c : final) fids.push_back(c.id);
+        for (const auto& c : finalRecs) fids.push_back(c.id);
         sort(fids.begin(), fids.end());
-        check("최종 ID 중복 없음",
-              unique(fids.begin(), fids.end()) == fids.end());
+        bool noFinalDup = (unique(fids.begin(), fids.end()) == fids.end());
+        check("최종 ID 중복 없음", noFinalDup);
 
         bool deletedGone = true;
         for (int did : toDelete)
-            if (any_of(final.begin(), final.end(),
+            if (any_of(finalRecs.begin(), finalRecs.end(),
                        [did](const Contact& c){ return c.id == did; }))
                 { deletedGone = false; break; }
         check("삭제된 25개 ID 최종 부재 확인", deletedGone);
+
+        // output.json : 최종 DB 상태 저장
+        json outputData = json::array();
+        for (const auto& c : finalRecs) outputData.push_back(toJson(c));
+        writeJson(tcDir + TC_SEP + "output.json", outputData);
+
+        opLog["step6_final_integrity"] = {
+            {"expected_count",   expected},
+            {"actual_count",     (int)finalRecs.size()},
+            {"all_have_name",    allHaveName},
+            {"no_duplicate_ids", noFinalDup},
+            {"deleted_ids_absent", deletedGone}
+        };
     }
 
-    // ─── 결과 출력 ─────────────────────────────────────────
+    // operations.json 저장
+    writeJson(tcDir + TC_SEP + "operations.json", opLog);
+
+    // ─── 결과 출력 및 summary.txt 저장 ───────────────────
     cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     cout << "Regression 결과: PASS " << gPass << " / FAIL " << gFail << "\n";
     for (const auto& f : gFailures) cout << f << "\n";
     cout << (gFail == 0 ? "전체 통과\n" : "실패 항목 있음\n");
     cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    cout << "TC 출력 경로: " << tcDir << "\n";
+
+    writeSummary(tcDir + TC_SEP + "summary.txt");
 
     remove(TEST_FILE.c_str());
     return gFail > 0 ? 1 : 0;
