@@ -222,6 +222,34 @@ ID    이름          이메일                   전화번호  메모
 
 ---
 
+## 테스트
+
+ID 중복 발생 여부를 자동으로 검증하는 스크립트가 포함되어 있다.
+
+### Bash (Linux / macOS / Git Bash)
+
+```bash
+bash test_id.sh
+```
+
+### PowerShell (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\test_id.ps1
+```
+
+### 테스트 항목
+
+| # | 시나리오 | 확인 내용 |
+|---|----------|-----------|
+| 1 | 정상 순차 추가 (A → B → C) | ID가 1, 2, 3으로 순서대로 발급되는지 |
+| 2 | ID 삭제 후 새 항목 추가 | 삭제된 ID가 재사용되지 않는지 (max+1 전략) |
+| 3 | 빈 상태에서 첫 항목 추가 | 첫 ID가 1로 시작하는지 |
+| 4 | 외부 편집으로 비연속 ID 삽입 후 추가 | 새 ID가 현재 최대값+1로 발급되는지 |
+| 5 | 외부 편집으로 중복 ID 삽입 후 추가 | 앱이 기존 중복을 감지하지 못하는 알려진 한계 확인 |
+
+---
+
 ## 파일 구조
 
 ```
@@ -231,5 +259,7 @@ CRUD/
 ├── crud_app.exe      # 빌드된 실행 파일
 ├── build.ps1         # 빌드 스크립트
 ├── CMakeLists.txt    # CMake 설정 (선택)
+├── test_id.sh        # ID 중복 테스트 스크립트 (Bash)
+├── test_id.ps1       # ID 중복 테스트 스크립트 (PowerShell)
 └── contacts.json     # 데이터 저장 파일 (자동 생성)
 ```
