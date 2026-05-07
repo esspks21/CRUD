@@ -15,7 +15,7 @@
 #include "json.hpp"
 
 using namespace std;
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 const string DATA_FILE = "contacts.json";
 

@@ -25,7 +25,7 @@
 #include "json.hpp"
 
 using namespace std;
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 static const string TEST_FILE    = "regression_contacts.json";
 static const int    WARMUP       = 1000;
