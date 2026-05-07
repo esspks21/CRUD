@@ -1,12 +1,12 @@
 # Regression 테스트
 
-CRUD 로직의 정확성을 100개 랜덤 데이터셋으로 검증하는 자동화 회귀 테스트.
+100,000개 랜덤 CRUD 연산으로 핵심 로직을 검증하는 자동화 회귀 테스트.
 
 ---
 
 ## 목적
 
-코드 수정 시마다 Create / Read / Update / Delete 핵심 로직이 깨지지 않았음을 자동으로 확인하고, 통과한 경우에만 GitHub에 push한다.
+코드 수정 시마다 Create / Read / Update / Delete 로직이 깨지지 않았음을 확인하고, 통과한 경우에만 GitHub에 push한다.
 
 ---
 
@@ -16,102 +16,110 @@ CRUD 로직의 정확성을 100개 랜덤 데이터셋으로 검증하는 자동
 |------|------|
 | `regression_test.cpp` | 랜덤 CRUD 시나리오 생성 및 검증 실행 |
 | `regression_test.exe` | 빌드 산출물 (`.gitignore` 대상) |
-| `regression_contacts.json` | 테스트 전용 임시 데이터 파일 (자동 생성·삭제) |
+| `regression_contacts.json` | 테스트 전용 임시 파일 (자동 생성·삭제) |
+| `TC/{타임스탬프}/` | 실행별 TC 출력 디렉터리 (`.gitignore` 대상) |
 
 ---
 
 ## 동작 방식
 
-### 1. 랜덤 데이터 생성
+### 1. 워밍업 (1,000개 Create)
 
-`regression_test.cpp` 내 `Gen` 구조체가 **고정 시드(seed=12345)** 기반 `mt19937`으로 데이터를 생성한다.  
-고정 시드를 사용하므로 실행 환경이 달라도 **동일한 입력·출력 시퀀스**가 보장된다.
+메인 연산 전 초기 DB를 구성한다.  
+이 시점의 상태가 `TC/{ts}/input.json` 으로 저장된다.
 
-생성 항목:
-- `name` : 성(10종) + 이름(10종) 조합
-- `email` : `user{i}@{domain}` 형식, 도메인 4종 랜덤 선택
-- `phone` : `010-{1000+i}-{랜덤4자리}`
-- `memo` : 팀명 5종 + 빈 문자열 중 랜덤 선택
+### 2. 고속 인메모리 DB
 
-### 2. 테스트 단계 (총 ~128개 체크)
+파일 I/O 없이 100,000번의 연산을 처리하기 위해 인메모리 DB를 사용한다.
+
+| 연산 | 복잡도 | 구조 |
+|------|--------|------|
+| Create | O(1) | `unordered_map` + `vector` |
+| Read | O(1) | `unordered_map` 직접 조회 |
+| Update | O(1) | `unordered_map` 직접 수정 |
+| Delete | O(1) | swap-and-pop 기법 |
+| 랜덤 선택 | O(1) | 인덱스 풀 벡터 직접 접근 |
+
+### 3. 연산 시퀀스 구성 및 셔플
 
 ```
-STEP 1 — Create 100개
-  ├─ 레코드 수 = 100 확인
-  ├─ ID 중복 없음 확인
-  └─ ID 시퀀스 1~100 확인
-
-STEP 2 — 랜덤 Read 30회
-  └─ 각 ID가 파일에 존재하는지 확인
-
-STEP 3 — 랜덤 Update 20회
-  ├─ 각 Update 성공 여부 확인
-  └─ 변경 값이 파일에 실제 반영되었는지 확인 (20×2 = 40 체크)
-
-STEP 4 — 랜덤 Delete 25회
-  ├─ 각 Delete 성공 여부 확인
-  └─ 삭제된 ID가 파일에서 실제로 사라졌는지 확인 (25×2 = 50 체크)
-
-STEP 5 — Delete 후 Create
-  └─ 새 ID = 현재 max+1 (재사용 없음) 확인
-
-STEP 6 — 최종 무결성
-  ├─ 최종 레코드 수 = 76 (100 - 25 + 1) 확인
-  ├─ 모든 레코드에 name 필드 존재 확인
-  ├─ 최종 ID 중복 없음 확인
-  └─ 삭제된 25개 ID 완전 부재 확인
+CREATE  × 25,000 ┐
+READ    × 25,000 ├─ 총 100,000개 → shuffle(seed=12345)
+UPDATE  × 25,000 │    → 완전 랜덤 순서로 1개씩 실행
+DELETE  × 25,000 ┘
 ```
 
-### 3. 임시 파일 격리
+- 고정 시드(`seed=12345`)로 실행 환경이 달라도 동일한 순서 보장
+- DB가 비어있을 때 Read/Update/Delete 시도 → Create로 자동 전환 (빈 DB 방지)
 
-테스트는 `regression_contacts.json` 을 전용 파일로 사용하며, **실제 운영 데이터 `contacts.json` 을 건드리지 않는다**.  
-테스트 종료 시 `regression_contacts.json` 은 자동 삭제된다.
+### 4. 검증 항목 (총 ~150,023 체크)
 
-### 4. 종료 코드
+| 단계 | 검증 내용 | 체크 수 |
+|------|-----------|---------|
+| CREATE × 25K | 생성된 ID가 DB에 존재 | 25,000 |
+| READ × 25K | 선택한 ID 조회 성공 | 25,000 |
+| UPDATE × 25K | 변경 성공 + 값 반영 확인 | 50,000 |
+| DELETE × 25K | 삭제 성공 + 부재 확인 | 50,000 |
+| 체크포인트 × 10 | in-memory ↔ file 크기·데이터 일치 | 20 |
+| 최종 무결성 | 레코드 수·데이터·ID 중복 없음 | 3 |
 
-| 종료 코드 | 의미 |
-|-----------|------|
-| `0` | 전체 통과 (push 허용) |
-| `1` | 1개 이상 실패 (push 차단) |
+### 5. 체크포인트 (10,000 연산마다)
+
+매 10,000번째 연산 후 DB 상태를 파일로 저장하고 다시 읽어 인메모리 상태와 비교한다.  
+파일 직렬화·역직렬화 정확성을 검증한다.
+
+### 6. 임시 파일 격리
+
+- 테스트 전용 파일 `regression_contacts.json` 사용 → `contacts.json` 불변
+- 테스트 종료 시 자동 삭제
 
 ---
 
-## 빌드 방법
+## TC 출력 파일
 
-### g++ (PowerShell)
+실행마다 `TC/{YYYYMMDD_HHMMSS}/` 디렉터리가 생성된다.
+
+| 파일 | 내용 | 크기(참고) |
+|------|------|------------|
+| `input.json` | 워밍업 완료 후 초기 1,000개 레코드 | ~160 KB |
+| `operations_sample.json` | 처음 100 + 마지막 100 연산 (before/after 포함) | ~85 KB |
+| `output.json` | 최종 DB 상태 전체 | ~160 KB |
+| `summary.txt` | PASS/FAIL 카운트 및 연산 통계 | < 1 KB |
+
+`TC/` 는 `.gitignore` 에 등록되어 로컬 확인 전용이다.
+
+---
+
+## 빌드 및 실행
 
 ```powershell
+# 빌드
 g++ -std=c++17 -O2 -Wall -o regression_test.exe regression_test.cpp
-```
 
-### CMake
-
-```powershell
-cmake --build out/build/x64-Debug --target regression_test
-```
-
----
-
-## 실행 방법
-
-```powershell
+# 실행
 .\regression_test.exe
 ```
 
-출력 예시 (전체 통과):
+출력 예시:
 
 ```
-[STEP 1] 100개 연락처 Create
-[STEP 2] 랜덤 Read 검증 (30회)
-[STEP 3] 랜덤 Update (20회)
-[STEP 4] 랜덤 Delete (25회)
-[STEP 5] Delete 후 Create - max+1 ID 전략
-[STEP 6] 최종 무결성 검증
+[WARMUP] 초기 1000개 Create
+[RUN] 100000개 랜덤 연산 (CREATE/READ/UPDATE/DELETE 각 25000개)
+  체크포인트 1 (10000/100000) DB=1046건 ✓
+  ...
+  체크포인트 10 (100000/100000) DB=1000건 ✓
+최종 무결성 검증 (DB=1000건)...
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Regression 결과: PASS 128 / FAIL 0
+Regression 결과: PASS 150023 / FAIL 0
+  CREATE : 25000 / 25000
+  READ   : 25000 / 25000
+  UPDATE : 25000 / 25000
+  DELETE : 25000 / 25000
+  DB 최종 : 1000건
 전체 통과
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TC 출력 경로: TC\20260507_154301
 ```
 
 ---
@@ -128,15 +136,11 @@ Regression 결과: PASS 128 / FAIL 0
     ↓ 빌드 성공 시
 [3] regression_test 실행
     .\regression_test.exe
-    ↓ 종료 코드 0 (전체 통과) 시
-[4] 사용자에게 push 방식 확인 (직접 push / PR 생성)
-    ↓ 사용자 승인
-[5] git add → git commit → git push
+    ↓ 종료 코드 0 (FAIL 0) 시
+[4] git add → git commit → git push origin main
 ```
 
-실패 시 동작:
-- **빌드 실패**: 컴파일 오류 내용을 출력하고 push 중단
-- **테스트 실패**: `[FAIL]` 항목을 출력하고 push 중단, 사용자에게 보고
+실패 시: `[FAIL]` 항목을 출력하고 push 중단, 사용자에게 보고.
 
 ---
 
@@ -144,6 +148,6 @@ Regression 결과: PASS 128 / FAIL 0
 
 | 한계 | 내용 |
 |------|------|
-| 외부 편집 중복 ID | `test_id.ps1` STEP 5와 동일. 앱이 기존 중복 ID를 감지하지 않음 |
-| 동시성 | 단일 스레드 순차 실행만 검증. 동시 파일 접근 시나리오 미포함 |
-| 대용량 | 100건 기준 검증. 수만 건 이상의 성능 검증은 별도 필요 |
+| 파일 I/O 테스트 범위 | 연산 자체는 인메모리. 파일 정확성은 체크포인트(10회) + 최종(1회)에서만 검증 |
+| 동시성 | 단일 스레드 순차 실행만 검증 |
+| 외부 편집 중복 ID | 앱이 기존 중복 ID를 감지하지 않는 알려진 한계 (test_id.ps1 STEP 5 참조) |
