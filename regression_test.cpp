@@ -87,8 +87,15 @@ struct MemDB {
     unordered_map<string,Contact> rec;
     unordered_map<string,int>     idx;
     vector<string>                alive;
-    unordered_set<string>         empNos;  // emp_no 고유 추적
-    unordered_set<string>         phones;  // phone 고유 추적
+    unordered_set<string>         empNos;
+    unordered_set<string>         phones;
+
+    // rehash 방지 사전 할당
+    void reserve(size_t n) {
+        rec.reserve(n); idx.reserve(n);
+        empNos.reserve(n); phones.reserve(n);
+        alive.reserve(n);
+    }
 
     bool add(const Contact& c) {
         if (rec.count(c.id))                              return false; // 중복 id
@@ -182,8 +189,14 @@ struct Gen {
     mt19937            rng;
     unordered_set<string> usedEmpNos;
     unordered_set<string> usedIds;
-    unordered_set<string> usedPhones;  // 전화번호 고유 추적
-    explicit Gen(unsigned s) : rng(s) {}
+    unordered_set<string> usedPhones;
+    explicit Gen(unsigned s) : rng(s) {
+        // rehash 방지: 워밍업 + CREATE 연산 수 예상치로 사전 할당
+        int cap = WARMUP + OPS_PER_TYPE + 128;
+        usedEmpNos.reserve(cap);
+        usedIds.reserve(cap);
+        usedPhones.reserve(cap);
+    }
 
     int ri(int lo, int hi) { return uniform_int_distribution<int>(lo,hi)(rng); }
 
@@ -330,6 +343,7 @@ int main() {
     string ts=makeTS(), tcDir=makeTCDir(ts);
     Gen gen(12345);
     MemDB db;
+    db.reserve(WARMUP + OPS_PER_TYPE + 128);  // rehash 방지
 
     map<string,long long> stats;
     stats["create_ok"]=0; stats["read_found"]=0;
